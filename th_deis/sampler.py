@@ -5,6 +5,9 @@ from .rk import get_rk_fn
 from .sde import MultiStepSDE, get_rev_ts
 from .vpsde import VPSDE
 from .helper import jax2th, th2jax
+import utils
+
+log_fn = utils.log_info
 
 def fori_loop(lower, upper, body_fun, init_val):
     val = init_val
@@ -24,26 +27,32 @@ def get_sampler(sde, eps_fn, ts_phase, ts_order, num_step, method="rho_rk",ab_or
     raise RuntimeError(f"{method} not support!!")
 
 def get_sampler_t_ab(sde, eps_fn, ts_phase, ts_order, num_step, ab_order):
-    jax_rev_ts = get_rev_ts(sde, num_step, ts_order, ts_phase=ts_phase)
-    
-    x_coef = sde.psi(jax_rev_ts[:-1], jax_rev_ts[1:])
-    eps_coef = get_ab_eps_coef(sde, ab_order, jax_rev_ts, ab_order)
-    jax_ab_coef = jnp.concatenate([x_coef[:, None], eps_coef], axis=1)
+    # IF ts_order = 1, num_step = 10, ab_order = 2
+    jax_rev_ts = get_rev_ts(sde, num_step, ts_order, ts_phase=ts_phase) # shape (11,)
+    x_coef = sde.psi(jax_rev_ts[:-1], jax_rev_ts[1:])                   # shape (10,)
+    eps_coef = get_ab_eps_coef(sde, ab_order, jax_rev_ts, ab_order)     # shape (10, 3)
+    jax_ab_coef = jnp.concatenate([x_coef[:, None], eps_coef], axis=1)  # shape (10, 4)
     th_rev_ts, th_ab_coef = jax2th(jax_rev_ts), jax2th(jax_ab_coef)
+    f2s = lambda arr: ' '.join([f"{a:.4f}" for a in arr])
+    log_fn(f"get_sampler_t_ab()...")
+    log_fn(f"  th_rev_ts   : {f2s(th_rev_ts)}")
+    log_fn(f"  x_coef      : {f2s(x_coef)}")
+    for i in range(len(eps_coef)):
+        ec = eps_coef[i]
+        log_fn(f"  eps_coef[{i:02d}]: {ec}")
 
     def sampler(xT):
         rev_ts, ab_coef = th_rev_ts.to(xT.device), th_ab_coef.to(xT.device)
+
         def ab_body_fn(i, val):
-            x, eps_pred = val
-            s_t= rev_ts[i]
-            
+            x, eps_arr = val
+            s_t = rev_ts[i]
             new_eps = eps_fn(x, s_t)
-            new_x, new_eps_pred = ab_step(x, ab_coef[i], new_eps, eps_pred)
+            new_x, new_eps_pred = ab_step(x, ab_coef[i], new_eps, eps_arr)
             return new_x, new_eps_pred
 
-
-        eps_pred = [xT,] * ab_order
-        img, _ = fori_loop(0, num_step, ab_body_fn, (xT, eps_pred))
+        eps_pred_arr = [xT, ] * ab_order
+        img, _ = fori_loop(0, num_step, ab_body_fn, (xT, eps_pred_arr))
         return img
     return sampler
 
