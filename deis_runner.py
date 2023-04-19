@@ -216,7 +216,64 @@ class DeisRunner:
         log_fn(f"  ab_order_arr : {ab_order_arr}")
         log_fn(f"  rk_method_arr: {rk_method_arr}")
 
-    def gen_sampler_fn(self):
+    @staticmethod
+    def load_predefined_aap(f_path: str, meta_dict=None):
+        if not os.path.exists(f_path):
+            raise Exception(f"File not found: {f_path}")
+        if not os.path.isfile(f_path):
+            raise Exception(f"Not file: {f_path}")
+        if meta_dict is None:
+            meta_dict = {}
+        log_fn(f"Load file: {f_path}")
+        with open(f_path, 'r') as f_ptr:
+            lines = f_ptr.readlines()
+        cnt_empty = 0
+        cnt_comment = 0
+        ab_arr = []  # alpha_bar array
+        ts_arr = []  # timestep array
+        for line in lines:
+            line = line.strip()
+            if line == '':
+                cnt_empty += 1
+                continue
+            if line.startswith('#'):  # line is like "# order     : 2"
+                cnt_comment += 1
+                arr = line[1:].strip().split(':')
+                key = arr[0].strip()
+                if key in meta_dict: meta_dict[key] = arr[1].strip()
+                continue
+            arr = line.split(':')
+            ab, ts = float(arr[0]), float(arr[1])
+            ab_arr.append(ab)
+            ts_arr.append(ts)
+        ab2s = lambda ff: ' '.join([f"{f:8.6f}" for f in ff])
+        ts2s = lambda ff: ' '.join([f"{f:10.5f}" for f in ff])
+        log_fn(f"  cnt_empty  : {cnt_empty}")
+        log_fn(f"  cnt_comment: {cnt_comment}")
+        log_fn(f"  cnt_valid  : {len(ab_arr)}")
+        log_fn(f"  ab[:5]     : [{ab2s(ab_arr[:5])}]")
+        log_fn(f"  ab[-5:]    : [{ab2s(ab_arr[-5:])}]")
+        log_fn(f"  ts[:5]     : [{ts2s(ts_arr[:5])}]")
+        log_fn(f"  ts[-5:]    : [{ts2s(ts_arr[-5:])}]")
+        for k, v in meta_dict.items():
+            log_fn(f"  {k:11s}: {v}")
+        return ab_arr, ts_arr
+
+    def gen_sampler_fn(self, aap_file=None):
+        if aap_file:
+            meta_dict = {"ts_phase": None, "ts_order": None, "num_step": None,
+                         "method": None, "ab_order": None, "rk_method": None}
+            ab_arr, _ = self.load_predefined_aap(aap_file, meta_dict)
+            ab_arr.insert(0, 0.9999)
+            ab_arr.reverse()
+            ts_arr = [self.sde.alpha2t_fn(ab) for ab in ab_arr]
+            deis.sampler._rev_ts = ts_arr
+            if meta_dict['ts_phase']:  self.ts_phase = meta_dict['ts_phase']
+            if meta_dict['ts_order']:  self.ts_order = float(meta_dict['ts_order'])
+            if meta_dict['num_step']:  self.num_step = int(meta_dict['num_step'])
+            if meta_dict['method']:    self.method = meta_dict['method']
+            if meta_dict['ab_order']:  self.ab_order = int(meta_dict['ab_order'])
+            if meta_dict['rk_method']: self.rk_method = meta_dict['rk_method']
         sampler_fn = deis.get_sampler(
             self.sde,
             self.eps_fn,
@@ -321,13 +378,13 @@ class DeisRunner:
              f"_{self.method}_{self.ab_order}_{self.rk_method}"
         return ks
 
-    def sample_times(self, times=None):
+    def sample_times(self, times=None, aap_file=None):
         args = self.args
         times = times or args.repeat_times
         fid_arr = []
         ss = self.config_key_str()
         input1, input2 = args.fid_input1 or 'cifar10-train', args.sample_output_dir
-        sampler_fn = self.gen_sampler_fn()
+        sampler_fn = self.gen_sampler_fn(aap_file)
         for i in range(times):
             self.sample(sampler_fn)
             log_fn(f"{ss}-{i}/{times} => FID calculating...")
@@ -350,19 +407,20 @@ class DeisRunner:
         avg, std = np.mean(fid_arr), np.std(fid_arr)
         return ss, avg, std
 
-    def sample(self, sampler_fn=None, sample_count=None):
+    def sample(self, sampler_fn=None, sample_count=None, aap_file=None):
         args, config = self.args, self.config
         if sampler_fn is None:
-            sampler_fn = self.gen_sampler_fn()
+            sampler_fn = self.gen_sampler_fn(aap_file)
         if sample_count is None:
             sample_count = args.sample_count
         b_sz  = args.sample_batch_size
         b_cnt = (sample_count - 1) // b_sz + 1
-        log_fn(f"sample_ckpt_path : {args.sample_ckpt_path}")
-        log_fn(f"sample_output_dir: {args.sample_output_dir}")
-        log_fn(f"sample_count     : {sample_count}")
-        log_fn(f"sample_batch_size: {args.sample_batch_size}")
-        log_fn(f"batch_count      : {b_cnt}")
+        log_fn(f"deis_runner::sample()...")
+        log_fn(f"  sample_ckpt_path : {args.sample_ckpt_path}")
+        log_fn(f"  sample_output_dir: {args.sample_output_dir}")
+        log_fn(f"  sample_count     : {sample_count}")
+        log_fn(f"  sample_batch_size: {args.sample_batch_size}")
+        log_fn(f"  batch_count      : {b_cnt}")
         time_start = time.time()
         d = config.data
         for b_idx in range(b_cnt):

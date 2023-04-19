@@ -1,8 +1,10 @@
+import os
+
 import jax
 import jax.numpy as jnp
 from .multistep import ab_step, get_ab_eps_coef
 from .rk import get_rk_fn
-from .sde import MultiStepSDE, get_rev_ts
+from .sde import MultiStepSDE, get_rev_ts as _sde_get_rev_ts
 from .vpsde import VPSDE
 from .helper import jax2th, th2jax
 import utils
@@ -15,7 +17,25 @@ def fori_loop(lower, upper, body_fun, init_val):
         val = body_fun(i, val)
     return val
 
+_rev_ts = None
+def get_rev_ts(exp_sde, num_step, ts_order, ts_phase="t"):
+    global _rev_ts
+    if _rev_ts:
+        jnp_rev_ts = jnp.asarray(_rev_ts)
+        _rev_ts = None
+        log_fn(f"sample::get_rev_ts(). used predefined _rev_ts. And then already set _rev_ts to None.")
+        return jnp_rev_ts
+    else:
+        return _sde_get_rev_ts(exp_sde, num_step, ts_order, ts_phase)
+
 def get_sampler(sde, eps_fn, ts_phase, ts_order, num_step, method="rho_rk",ab_order=3, rk_method="3kutta"):
+    log_fn(f"sample::get_sampler()...")
+    log_fn(f"  ts_phase : {ts_phase}")
+    log_fn(f"  ts_order : {ts_order}")
+    log_fn(f"  num_step : {num_step}")
+    log_fn(f"  method   : {method}")
+    log_fn(f"  ab_order : {ab_order}")
+    log_fn(f"  rk_method: {rk_method}")
     if method.lower() == "rho_rk":
         return get_sampler_rho_rk(sde, eps_fn, ts_phase, ts_order, num_step, rk_method)
     elif method.lower() == "rho_ab":

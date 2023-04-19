@@ -9,7 +9,7 @@ import torch.backends.cudnn as cudnn
 from deis_runner import DeisRunner, get_eps_fn
 from deis_vubo_helper import DeisVuboHelper
 from schedule.schedule_batch import ScheduleBatch
-from utils import str2bool, dict2namespace, log_info
+from utils import dict2namespace, log_info
 
 log_fn = log_info
 
@@ -20,7 +20,6 @@ def parse_args_and_config():
     parser.add_argument('--gpu_ids', nargs='+', type=int, default=[7])
     parser.add_argument("--seed", type=int, default=0, help="Random seed. 0 means ignore")
     parser.add_argument("--repeat_times", type=int, default=1, help='run XX times to get avg FID')
-    parser.add_argument("--ts_int_flag", type=str2bool, default=False, help='timestep change to int type')
     parser.add_argument("--ss_plan_file", type=str,     default="./output1_cifar10/vubo_ss_plan.txt")
     parser.add_argument("--ab_original_dir", type=str,  default='./output1_cifar10/phase1_ab_original')
     parser.add_argument("--ab_scheduled_dir", type=str, default='./output1_cifar10/phase2_ab_scheduled')
@@ -98,21 +97,21 @@ def main():
     arr = [a.strip() for a in arr]
     for a in arr:
         if a == 'sample_baseline' or a == 'sample_all':
-            log_fn(f"{a} ===================================")
+            log_fn(f"{a} ======================================================================")
             runner.sample_baseline()
         elif a == 'alpha_bar_all':
-            log_fn(f"{a} ===================================")
+            log_fn(f"{a} ======================================================================")
             runner.alpha_bar_all()
         elif a == 'schedule' or a == 'schedule_only':
-            log_fn(f"{a} ===================================")
+            log_fn(f"{a} ======================================================================")
             sb = ScheduleBatch(args)
             sb.schedule_batch()
         elif a == 'sample_scheduled':
-            log_fn(f"{a} ===================================")
+            log_fn(f"{a} ======================================================================")
             helper = DeisVuboHelper(args, runner)
             helper.sample_scheduled()
         elif a == 'schedule_sample':
-            log_fn(f"{a} ===================================")
+            log_fn(f"{a} ======================================================================")
             helper = DeisVuboHelper(args, runner)
             helper.schedule_sample()
         else:

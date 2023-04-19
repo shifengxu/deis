@@ -1,31 +1,28 @@
 import os
 
 from schedule.schedule_batch import ScheduleBatch
-from utils import log_info, str2bool
+from utils import log_info
 
 log_fn = log_info
 
 class ScheduleSampleConfig:
-    def __init__(self, lp=None, ts_int_flag=None, calo=None, improve_target=None):
+    def __init__(self, lp=None, calo=None, improve_target=None):
         """
         :param lp: learning portion
-        :param ts_int_flag:
         :param calo: calculating loss order. order when calculating loss during schedule
         :param improve_target: if FID reach the improve-target, then stop iteration
         """
         self.lp = lp
-        self.ts_int_flag = ts_int_flag
         self.calo = calo
         self.improve_target = improve_target
 
     def parse(self, cfg_str):
         # cfg_str is like: "0.1   : False         : 0     : 20%"
         arr = cfg_str.strip().split(':')
-        if len(arr) != 4: raise ValueError(f"Invalid cfg_str: {cfg_str}")
+        if len(arr) != 3: raise ValueError(f"Invalid cfg_str: {cfg_str}")
         self.lp             = float(arr[0].strip())
-        self.ts_int_flag    = str2bool(arr[1].strip())
-        self.calo           = int(arr[2].strip())
-        self.improve_target = arr[3].strip()  # keep as string. Because it may be: 20% or 0.33 or empty
+        self.calo           = int(arr[1].strip())
+        self.improve_target = arr[2].strip()  # keep as string. Because it may be: 20% or 0.33 or empty
         return self
 
 class ScheduleSampleResult:
@@ -74,11 +71,10 @@ def load_plans_from_file(f_path):
 def output_ssr_list(ssr_list, f_path):
     log_fn(f"Save file: {f_path}")
     with open(f_path, 'w') as f_ptr:
-        f_ptr.write(f"#  FID    : std    : lp    :ts_int: calo: key                 : notes\n")
+        f_ptr.write(f"#  FID    : std    : lp    : calo: key                 : notes\n")
         for ssr in ssr_list:
             ssc = ssr.ssc
             s = f"{ssr.fid:9.5f}: {ssr.fid_std:.5f}: {ssc.lp:.4f}:" \
-                f" {'True ' if ssc.ts_int_flag else 'False'}:" \
                 f" {ssc.calo:4d}: {ssr.key.ljust(20)}: {ssr.notes}\n"
             f_ptr.write(s)
         # for
@@ -90,8 +86,9 @@ class DeisVuboHelper:
         self.deis_runner = deis_runner
 
     def schedule_sample(self):
-        log_fn(f"DeisVuboHelper::schedule_sample() *********************************")
         args = self.args
+        plan_map = load_plans_from_file(args.ss_plan_file)
+        log_fn(f"DeisVuboHelper::schedule_sample() *********************************")
         sb = ScheduleBatch(args)
         ori_dir = args.ab_original_dir
         sum_dir = args.ab_summary_dir
@@ -100,7 +97,6 @@ class DeisVuboHelper:
             os.makedirs(sum_dir)
         run_hist_file = os.path.join(sum_dir, "ss_run_hist.txt")
         fid_best_file = os.path.join(sum_dir, "ss_run_best.txt")
-        plan_map = load_plans_from_file(args.ss_plan_file)
         # ori_dir file name is like: ts_t-1.0_s20_rho_ab_3_3kutta.txt
         file_list = [f for f in os.listdir(ori_dir) if f.endswith('.txt')]
         file_list = [os.path.join(ori_dir, f) for f in file_list]
@@ -121,9 +117,7 @@ class DeisVuboHelper:
             ssr_best = None
             for ssc in ssc_arr:
                 scheduled_file = sb.schedule_single(f_path, args.lr, ssc.lp, ab_order=ssc.calo)
-                args.predefined_aap_file = scheduled_file
-                args.ts_int_flag = ssc.ts_int_flag
-                key, fid_avg, fid_std = self.deis_runner.sample_times(args.repeat_times)
+                key, fid_avg, fid_std = self.deis_runner.sample_times(args.repeat_times, scheduled_file)
                 ssr = ScheduleSampleResult(ssc, key, fid_avg, fid_std)
                 run_hist.append(ssr)
                 output_ssr_list(run_hist, run_hist_file)
@@ -136,8 +130,9 @@ class DeisVuboHelper:
         # for
 
     def sample_scheduled(self):
-        log_fn(f"DeisVuboHelper::sample_scheduled() *********************************")
         args = self.args
+        plan_map = load_plans_from_file(args.ss_plan_file)
+        log_fn(f"DeisVuboHelper::sample_scheduled() *********************************")
         sch_dir = args.ab_scheduled_dir
         sum_dir = args.ab_summary_dir
         if not os.path.exists(sum_dir):
@@ -145,7 +140,6 @@ class DeisVuboHelper:
             os.makedirs(sum_dir)
         run_hist_file = os.path.join(sum_dir, "ss_run_hist.txt")
         fid_best_file = os.path.join(sum_dir, "ss_run_best.txt")
-        plan_map = load_plans_from_file(args.ss_plan_file)
         file_list = [f for f in os.listdir(sch_dir) if f.endswith('.txt')]
         file_list = [os.path.join(sch_dir, f) for f in file_list]
         file_list = [f for f in file_list if os.path.isfile(f)]
@@ -164,9 +158,7 @@ class DeisVuboHelper:
             ssc_arr = plan_map.get(key, plan_map['default'])
             ssr_best = None
             for ssc in ssc_arr:
-                args.predefined_aap_file = f_path
-                args.ts_int_flag = ssc.ts_int_flag
-                key, fid_avg, fid_std = self.deis_runner.sample_times(args.repeat_times)
+                key, fid_avg, fid_std = self.deis_runner.sample_times(args.repeat_times, f_path)
                 ssr = ScheduleSampleResult(ssc, key, fid_avg, fid_std)
                 run_hist.append(ssr)
                 output_ssr_list(run_hist, run_hist_file)
