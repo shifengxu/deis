@@ -64,12 +64,21 @@ class ScheduleBatch:
         [log_fn('  ' + m) for m in m_arr]
         c_arr = [f" Old comments in file {f_path}"]  # comment array
         alpha_bar, line_arr, order_ = self.load_floats_from_file(f_path, c_arr)
-        m_arr2 = [f"ab_order from param : {ab_order}",
-                  f"ab_order from file  : {order_}",
-                  f"ab_order final      : {ab_order or order_}"]
-        ab_order = ab_order or order_
-        [log_fn('  ' + m) for m in m_arr2]
-        m_arr += m_arr2
+        # m_arr2 = [f"ab_order from param : {ab_order}",
+        #           f"ab_order from file  : {order_}",
+        #           f"ab_order final      : {ab_order or order_}"]
+        # ab_order = ab_order or order_
+        # [log_fn('  ' + m) for m in m_arr2]
+        # m_arr += m_arr2
+        # comment out the above code. If in the future we consider ab_order of DEIS, we can reuse the code.
+        if ab_order is None:
+            ab_order = 1
+        elif ab_order != 1:
+            # Currently, we have no logic for ab_order == 2 or 3. So hard code to 1
+            log_fn(f"schedule_batch::schedule_single() change ab_order {ab_order} -> 1")
+            ab_order = 1
+        # so now ab_order is 1
+
         c_arr = [c[1:].strip() for c in c_arr]  # remove prefix '#'
         _, idx_arr = self.vs(torch.tensor(alpha_bar, device=self.device), include_index=True)
         s_arr = [f"{line_arr[i]} : {idx_arr[i]:4d}" for i in range(len(alpha_bar))]
