@@ -382,9 +382,9 @@ class DeisRunner:
         args = self.args
         times = times or args.repeat_times
         fid_arr = []
-        ss = self.config_key_str()
         input1, input2 = args.fid_input1 or 'cifar10-train', args.sample_output_dir
         sampler_fn = self.gen_sampler_fn(aap_file)
+        ss = self.config_key_str()
         for i in range(times):
             self.sample(sampler_fn)
             log_fn(f"{ss}-{i}/{times} => FID calculating...")
